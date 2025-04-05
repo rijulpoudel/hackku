@@ -1,0 +1,134 @@
+// tracked/frontend/src/firebase/firebase.js
+import { initializeApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+
+const firebaseConfig = {
+  apiKey: 'YOUR_API_KEY',
+  authDomain: 'YOUR_AUTH_DOMAIN',
+  projectId: 'YOUR_PROJECT_ID',
+  storageBucket: 'YOUR_STORAGE_BUCKET',
+  messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+  appId: 'YOUR_APP_ID'
+};
+
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+
+
+// tracked/frontend/src/firebase/firebaseHelpers.js
+import { db, storage } from './firebase';
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  query,
+  where
+} from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
+export const addItem = async (itemData, imageFile) => {
+  const imageRef = ref(storage, `images/${imageFile.name}`);
+  await uploadBytes(imageRef, imageFile);
+  const imageUrl = await getDownloadURL(imageRef);
+
+  await addDoc(collection(db, 'items'), {
+    ...itemData,
+    imageUrl,
+    favorite: false,
+    createdAt: new Date()
+  });
+};
+
+export const getItems = async () => {
+  const snapshot = await getDocs(collection(db, 'items'));
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const toggleFavorite = async (id, value) => {
+  const itemRef = doc(db, 'items', id);
+  await updateDoc(itemRef, { favorite: value });
+};
+
+export const searchItems = async (term) => {
+  const q = query(collection(db, 'items'), where('name', '>=', term), where('name', '<=', term + '\uf8ff'));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+
+// tracked/frontend/src/App.js
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import AddItemPage from './pages/AddItemPage';
+import GalleryPage from './pages/GalleryPage';
+import FavoritesPage from './pages/FavoritesPage';
+import SearchPage from './pages/SearchPage';
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<GalleryPage />} />
+        <Route path="/add" element={<AddItemPage />} />
+        <Route path="/favorites" element={<FavoritesPage />} />
+        <Route path="/search" element={<SearchPage />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;
+
+
+// Example Component: tracked/frontend/src/components/ItemCard.jsx
+import React from 'react';
+
+const ItemCard = ({ item, onFavoriteToggle }) => {
+  return (
+    <div className="item-card">
+      <img src={item.imageUrl} alt={item.name} />
+      <h3>{item.name}</h3>
+      <p>{item.location}</p>
+      <button onClick={() => onFavoriteToggle(item.id, !item.favorite)}>
+        {item.favorite ? '★' : '☆'}
+      </button>
+    </div>
+  );
+};
+
+export default ItemCard;
+
+
+// Example Page: tracked/frontend/src/pages/GalleryPage.jsx
+import React, { useEffect, useState } from 'react';
+import { getItems, toggleFavorite } from '../firebase/firebaseHelpers';
+import ItemCard from '../components/ItemCard';
+
+const GalleryPage = () => {
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const data = await getItems();
+      setItems(data);
+    };
+    fetchData();
+  }, []);
+
+  return (
+    <div>
+      <h2>Gallery</h2>
+      <div className="gallery">
+        {items.map(item => (
+          <ItemCard key={item.id} item={item} onFavoriteToggle={toggleFavorite} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default GalleryPage;
